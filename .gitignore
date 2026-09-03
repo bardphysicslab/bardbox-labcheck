@@ -1,0 +1,13 @@
+.venv/
+software/app/venv/
+software/firmware/.pio/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.env
+data/*
+!data/.gitkeep
+
+# Server-local deployment configuration (may contain secrets)
+software/app/config/app_config.json

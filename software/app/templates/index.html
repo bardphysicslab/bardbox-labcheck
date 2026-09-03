@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/bardbox.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="site-header">
+        <div class="brand">
+          <img src="/static/Bard-Web-Logos/bard-logo-red.png" alt="Bard College" />
+          <h1>{{ title }}</h1>
+        </div>
+        <div class="header-tools">
+          <nav class="nav-links" aria-label="Primary"><a href="/">Overview</a></nav>
+          <div class="clock">
+            <div id="clock-local">--:--:--</div>
+            <div id="clock-utc" class="clock-secondary">UTC --</div>
+          </div>
+        </div>
+      </header>
+
+      <div class="summary">
+        <div><strong id="app_id">{{ app_id }}</strong></div>
+        <div><span id="app_mode">sensor_monitor</span></div>
+        <div><span id="driver_count">0 nodes</span></div>
+        <div>Time: <span id="time_status">system</span></div>
+      </div>
+
+      <section class="section" aria-labelledby="current-heading">
+        <div class="section-heading"><h2 id="current-heading">Current status</h2><span class="muted">Live values</span></div>
+        <div id="node-grid" class="node-grid"></div>
+      </section>
+
+      <section class="section" aria-labelledby="table-heading">
+        <h2 id="table-heading">Node summary</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Node</th><th>Status</th><th>Last reading (UTC)</th><th>Temperature</th></tr></thead>
+            <tbody id="node-table"><tr><td colspan="4">Waiting for readings…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="chart-heading">
+        <div class="chart-panel">
+          <h2 id="chart-heading">Historical chart</h2>
+          <p class="muted">Example placement: label the time range, units, and series before rendering project-specific data.</p>
+          <div class="chart-frame" role="img" aria-label="Empty historical chart example">No historical series configured.</div>
+        </div>
+      </section>
+
+      <footer class="site-footer">BardBox · {{ app_id }}</footer>
+    </main>
+
+    <script>
+      const pollIntervalMs = {{ poll_interval_ms }};
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>'"]/g, (character) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+        })[character]);
+      }
+
+      function formatValue(value, digits = null) {
+        if (value === null || value === undefined) return "—";
+        const number = Number(value);
+        return digits === null || !Number.isFinite(number) ? String(value) : number.toFixed(digits);
+      }
+
+      function formatTimestamp(value, utc = false) {
+        if (!value) return "—";
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return String(value);
+        return utc ? parsed.toISOString().replace(".000Z", "Z") : parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+
+      function metricTemplate(label, value, unit, digits = null) {
+        const formatted = formatValue(value, digits);
+        const unitHtml = formatted === "—" || !unit ? "" : `<span class="metric-unit">${escapeHtml(unit)}</span>`;
+        return `<div class="metric"><div class="metric-label">${escapeHtml(label)}</div><div class="metric-value">${escapeHtml(formatted)}${unitHtml}</div></div>`;
+      }
+
+      function detailRow(label, value) {
+        return `<div class="detail-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value ?? "—")}</span></div>`;
+      }
+
+      function renderReadings(readings) {
+        const grid = document.getElementById("node-grid");
+        const table = document.getElementById("node-table");
+        if (!readings.length) {
+          grid.innerHTML = '<div class="empty">No nodes configured.</div>';
+          table.innerHTML = '<tr><td colspan="4">No nodes configured.</td></tr>';
+          return;
+        }
+
+        grid.replaceChildren(...readings.map((reading) => {
+          const status = reading.status || "error";
+          const data = reading.data || {};
+          const extended = reading.extended || {};
+          const card = document.createElement("article");
+          card.className = `node-card ${status === "ok" ? "" : status}`;
+          card.innerHTML = `
+            <div class="node-head">
+              <div class="node-title">
+                <div class="node-name">${escapeHtml(reading.uid || "Unknown node")}</div>
+                <div class="node-location">${escapeHtml(reading.message || "BardBox node")}</div>
+                <div class="node-meta">UID ${escapeHtml(reading.uid || "unknown")}</div>
+              </div>
+              <div class="status ${escapeHtml(status)}">${escapeHtml(status === "node_unavailable" ? "ERROR" : status)}</div>
+            </div>
+            <div class="metrics">
+              ${metricTemplate("Temperature", data.temp_c, "°C", 2)}
+              ${metricTemplate("Relative humidity", data.rh_pct, "%", 2)}
+              ${metricTemplate("Pressure", data.press_pa, "Pa", 0)}
+            </div>
+            <div class="last-seen">Last reading: ${escapeHtml(formatTimestamp(extended.last_seen, true))}</div>
+            <details class="foldout"><summary>Identity</summary><div class="detail-list">${detailRow("UID", reading.uid)}${detailRow("Status", status)}</div></details>
+            <details class="foldout"><summary>Health</summary><div class="detail-list">${detailRow("Last reading (UTC)", formatTimestamp(extended.last_seen, true))}${detailRow("Freshness limit", extended.stale_after_s === undefined ? "—" : `${extended.stale_after_s} s`)}</div></details>
+            <details class="foldout"><summary>Configuration</summary><div class="detail-list">${detailRow("Driver message", reading.message || "—")}</div></details>`;
+          return card;
+        }));
+
+        table.innerHTML = readings.map((reading) => {
+          const data = reading.data || {};
+          const lastSeen = reading.extended?.last_seen;
+          const temperature = formatValue(data.temp_c, 2);
+          return `<tr><td>${escapeHtml(reading.uid || "—")}</td><td>${escapeHtml((reading.status || "error").toUpperCase())}</td><td>${escapeHtml(formatTimestamp(lastSeen, true))}</td><td>${escapeHtml(temperature)}${temperature === "—" ? "" : " °C"}</td></tr>`;
+        }).join("");
+      }
+
+      async function refreshTime() {
+        const response = await fetch("/time");
+        if (!response.ok) throw new Error(`time request failed: ${response.status}`);
+        const payload = await response.json();
+        document.getElementById("clock-local").textContent = payload.local || "—";
+        document.getElementById("clock-utc").textContent = `UTC ${payload.utc || "—"}`;
+        document.getElementById("time_status").textContent = payload.time_status?.source || "unknown";
+      }
+
+      async function refreshInfo() {
+        const [infoResponse, driversResponse] = await Promise.all([fetch("/app/info"), fetch("/drivers")]);
+        if (!infoResponse.ok || !driversResponse.ok) throw new Error("service information request failed");
+        const info = await infoResponse.json();
+        const drivers = await driversResponse.json();
+        document.getElementById("app_id").textContent = info.app_id || "—";
+        document.getElementById("app_mode").textContent = info.mode || "—";
+        document.getElementById("driver_count").textContent = `${drivers.drivers?.length ?? 0} nodes`;
+      }
+
+      async function refreshReadings() {
+        const response = await fetch("/readings/latest");
+        if (!response.ok) throw new Error(`reading request failed: ${response.status}`);
+        const payload = await response.json();
+        renderReadings(payload.readings || []);
+      }
+
+      async function tick() {
+        try { await Promise.all([refreshTime(), refreshInfo(), refreshReadings()]); }
+        catch (error) { console.error("Dashboard refresh failed", error); }
+      }
+
+      tick();
+      setInterval(tick, pollIntervalMs);
+    </script>
+  </body>
+</html>
