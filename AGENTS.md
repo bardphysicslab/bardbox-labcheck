@@ -54,15 +54,16 @@ Initial scope is automated verification of bench power supplies, beginning with 
 - Do not describe LabCheck as a calibration system unless a procedure and reference chain actually support that claim; use verification/characterization terminology by default.
 - No arbitrary destructive instrument control, deployment, Git history rewriting, or production changes without explicit human authorization.
 - Before consequential changes, run applicable tests and `bardbox doctor` / `bardbox audit` when available.
-- Instruments are passed into `run_psu_basic_v1`; exercise sequencing, verdicts and failure handling with `fakes.py` scenarios before any hardware step.
+- When the `psu_basic_v1` runner is implemented, pass instruments in rather than constructing them, and exercise sequencing, verdicts and failure handling with fake-instrument scenarios before any hardware step.
 
 ## Current implementation boundary
 
 Do not add production instrument-control code until the first test-suite specification is written and reviewed. The immediate implementation target is `psu_basic_v1`: define what is measured, the sequence, raw outputs, derived metrics, safety limits, and pass/fail policy before automating the ET5406A or Analog Discovery Studio.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the dated local prototype snapshot,
-its uncommitted status, and component boundaries. Verify that the referenced code
-is present before relying on it. Where the runner and suite specification differ,
-report the discrepancy rather than silently changing either to match the other;
-specification approval is not recorded. Results produced with fakes are not
-hardware evidence.
+No test-suite code is committed yet. An earlier local prototype was discarded
+on 2026-10-03 and is not part of this repository; do not assume any of its
+files exist. [ARCHITECTURE.md](ARCHITECTURE.md) keeps its component boundaries
+as intended design. When code is written, where the runner and suite
+specification differ, report the discrepancy rather than silently changing
+either to match the other. Results produced with fakes are not hardware
+evidence.
